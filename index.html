@@ -1,0 +1,209 @@
+
+<!DOCTYPE html>
+<!--
+Created using JS Bin
+http://jsbin.com
+
+Copyright (c) 2017 by anonymous (http://jsbin.com/gutatahewu/1/edit)
+
+Released under the MIT license: http://jsbin.mit-license.org
+-->
+<meta name="robots" content="noindex">
+<html>
+<head>
+	<meta name="viewport" content="width=device-width">
+	<title>Hello Bagel</title>
+	<link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon">	
+	<!--<base href="http://localhost:8080">-->
+	<script src="http://ajax.googleapis.com/ajax/libs/angularjs/1.4.0/angular.min.js"></script>
+	<script src="http://ajax.googleapis.com/ajax/libs/angularjs/1.4.0/angular-sanitize.js"></script>	
+	<script src="/angular-relative-date.js"></script>
+<style id="jsbin-css">
+body {
+  font: 11px sans-serif;
+}
+a {
+  color:#00aaff;
+  text-decoration: none;
+}
+.input {
+  margin-bottom: 1em;
+}
+ul {
+  padding: 0;
+}
+li {
+  list-style-type: none;
+  margin: 0 0.5em 0.5em 0;
+}
+img.profile {
+  height: 2em;
+  float: left;
+  clear: left;
+  margin: 0 0.5em 0.5em 0;
+}
+.media img {
+  max-width: 100%;
+  margin-right: 0.5em;
+}
+.row {
+  display: table-row;
+}
+.col {
+  display: table-cell;
+  border-right: 1px solid #ccc; 
+}
+.col:last-child {
+  border: none;
+}
+.count {
+  display: inline-block;
+  width: 2em;
+  text-align: right;
+}
+.token {
+  padding-left: 1em;
+}
+.word:hover {
+  background: plum;
+  cursor: pointer;
+}
+.freq {
+  white-space: nowrap;
+}
+</style>
+</head>
+<body>
+  
+  <div ng-app="myApp" ng-controller="tweetCtrl" ng-cloak>
+    <div class="input">
+      <input type="text" ng-model="search" ng-model-options="{debounce: 500}" ng-change="lookup(search)">
+      <input type="text" ng-model="localSearch" ng-model-options="{debounce: 500}"> {{tweetFilter.length}}
+      <span ng-repeat="syn in synonyms">{{syn}}<span ng-if="!$last">, </span></span>
+    </div>
+    <div class="row">
+      <div ng-if="!loading && tweetFilter.length == 0">No tweets matching "{{localSearch}}"</div>
+      <div ng-if="loading">Loading...</div>
+      <ul class="col" ng-init="lookup(search)">
+        <li class="tweet" ng-repeat="tweet in tweets | filter:{text:localSearch} as tweetFilter" ng-click="log(tweet)">
+          <img class="profile" ng-src="{{tweet.user.profile_image_url}}" /> 
+          <a href="https://twitter.com/{{tweet.user.screen_name}}/status/{{tweet.id_str}}" target="_blank">{{tweet.created_at | relativeDate}}</a> 
+          <!--<span class="word" 
+                ng-repeat="word in tweet.text.split(' ') track by $index"
+                ng-click="lookup(word)"
+>{{word}} </span>-->
+          <span ng-bind="tweet.text"></span>
+					<div ng-if="cfg.media && tweet.extended_entities" class="media">
+            <img ng-repeat="image in tweet.extended_entities.media" ng-src="{{image.media_url}}"/>
+          </div>
+        </li>
+      </ul>
+      <ul class="col">  
+        <li class="word freq" ng-repeat="token in tokens" ng-click="localLookup(token[0])">
+          <span class="count">{{token[1]}}</span><span class="token">{{token[0]}}</span>
+        </li>
+      </ul>
+    </div>
+    
+  </div>
+
+<script id="jsbin-javascript">
+var postheader = {
+    headers : {
+      'Content-Type': 'multipart/form-data; charset=UTF-8'
+    }
+  },
+  buildPath = function(word){
+    if (word[0] == '@') {
+      return '/user/'+word.slice(1);
+    } else {
+      return '/search/'+encodeURIComponent(word);
+    }
+  };
+
+var app = angular.module('myApp', ['relativeDate','ngSanitize']);
+app.controller('tweetCtrl', function($scope, $http) {
+  
+  $scope.cfg = {
+    media: false,
+    retweets: true,
+    replies: false,
+    start_count: 0,
+    end_count: 5000
+  };
+ 
+	$scope.loading = false; 
+  $scope.search = '@_ddubb';
+	$scope.localSearch = '';
+	$scope.tweetFilter = [];
+  
+	/*$scope.$watchCollection('tweetFilter', function() {
+		console.log('tweetFilter', $scope.tweetFilter);
+	});*/
+
+  $scope.log = function(obj){
+    console.log(obj);
+  };
+  
+  $scope.lookup = function(word){
+    $scope.search = word;
+    $scope.getSynonyms(word);
+    $scope.printTweets(word);
+  };
+  
+  $scope.localLookup = function(word){
+		$scope.localSearch = word;
+  };
+  
+  $scope.getFreq = function(data){
+    $http.post('/nlp/freq', data, postheader)
+    .success(function(response){
+      $scope.tokens = [].concat(
+        response.trigrams,
+        response.bigrams,
+        response.tokens
+      );
+    });
+  };
+  
+  $scope.getSynonyms = function(word){
+    $http.get('/nlp/wordnet/'+encodeURIComponent(word))
+    .success(function(res){
+      $scope.synonyms = res.synonyms;
+    });
+  }
+  
+  $scope.printTweets = function(word) {
+    $scope.loading = true;
+		$http.get(buildPath(word))
+    .success(function (response) {
+      var out = {
+        downloaded: response.statuses.length,
+				tweets: [],
+        retweets: [],
+        replies: [],
+        counter: 0,
+        corpus: ''
+      };
+      response.statuses.forEach(function(t){
+        if (out.counter >= $scope.cfg.end_count) return false;
+        if (!$scope.cfg.retweets && (t.retweeted_status || t.retweeted_status_id)) {
+          out.retweets.push(t);
+        } else if (!$scope.cfg.replies && t.in_reply_to_user_id) {
+          out.replies.push(t);
+        } else {
+          out.tweets.push(t);
+          out.corpus += t.text + '\n\n';
+          out.counter++;
+        }
+      });
+			$scope.loading = false;
+      $scope.getFreq(out.corpus);
+      $scope.tweets = out.tweets;
+      console.log('response:', out, 'corpus len:', out.corpus.length);
+    });
+  };
+});
+</script>
+</body>
+</html>
