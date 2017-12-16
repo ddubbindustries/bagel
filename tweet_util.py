@@ -49,7 +49,7 @@ def get_tweets(tso, count, max_queries = 10):
 	except TwitterSearchException as e: 
 	  print(e)
 
-def search_tweets(query, count=300):
+def search_tweets(query, count=300, popular=False):
 	if query[0] == '"' and query[-1] == '"':
 		query = [query]
 	else:
@@ -58,12 +58,12 @@ def search_tweets(query, count=300):
 	print('getting search tweets', query, count)
 	tso = TwitterSearchOrder() 
 	tso.set_keywords(query) 
-	tso.set_language('en')
-	#tso.set_result_type('popular')  #only returns 15 results
+	#tso.set_language('en')
+	if (popular): tso.set_result_type('popular')  #only returns 15 results
 	#tso.set_include_entities(False)
 	return get_tweets(tso, count)
 
-def user_tweets(username, count=2000):
+def user_tweets(username, count=15):
 	print('getting user tweets', username, count)
 	tuo = TwitterUserOrder(username) 
 	return get_tweets(tuo, count)

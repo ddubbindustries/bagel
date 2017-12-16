@@ -14,7 +14,7 @@ def reindex():
 
 @route('/search/<query>')
 def search_output(query):
-	return search_tweets(query)
+	return search_tweets(query, popular=True)
 
 @route('/search/<query>/<count:int>')
 def search_output(query, count):
